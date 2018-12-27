@@ -34,24 +34,47 @@ def test_parse_tex_file(path, keywords, expected):
 
 def test_load_quantities_index():
 
-    from knowviz.index import load_quantities_index
+    from knowviz.index import load_yaml_file
 
     path = "data/metadata/quantities.yml"
-    quantities = load_quantities_index(path)
+    quantities = load_yaml_file(path)
 
-    expected = dict(q1="q1", q2="q2")
+    expected = dict(q1="q1", q2="q2", q_1="q1", q_2="q2")
 
     assert quantities == expected
 
 
 def test_parse_keyword_reference():
 
-    from knowviz.index import load_quantities_index
-    quantities = set(load_quantities_index("data/metadata/quantities.yml"))
+    from knowviz.index import load_yaml_file
+    quantities = set(load_yaml_file("data/metadata/quantities.yml"))
 
     path = "data/models/m1.tex"
-    from knowviz.index import parse_keyword_references
+    from knowviz.index import find_keyword_references
 
-    results = set(parse_keyword_references(path, quantities))
+    results = set(find_keyword_references(path, quantities))
     for keyword in ["q1", "q2"]:
         assert keyword in results
+
+
+def test_scan_directory():
+
+    from knowviz.index import scan_directory
+
+    files = scan_directory("data/models/", extension=".tex")
+
+    assert next(files).endswith(".tex")
+
+
+def test_md5_checksum():
+    """Test md5 checksum computation and verify it is the same as in the models index."""
+
+    from knowviz.index import md5_checksum, load_yaml_file
+
+    checksum = md5_checksum("data/models/m1.tex")
+
+    models = load_yaml_file("data/metadata/models.yml")
+
+    # verify that checksum is identical.
+    # if this fails, run the update_data.py script to update the models index.
+    assert checksum == models["m1"]["checksum"]
