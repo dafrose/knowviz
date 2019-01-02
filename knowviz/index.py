@@ -10,12 +10,8 @@ class ParserError(Exception):
 
 
 def create_grammar(keywords: _t.Sequence) -> _pp.ParserElement:
-    """Create a pyparsing grammar that matches keywords, ignoring the remainder of the text. Using `pyparsing.Keyword`
-    and MatchFirst will match the first in the list of keywords as isolated words. The list of `keywords` will be sorted
-    internally, such that longer strings are matched first (mimicking the behaviour of `pyparsing.oneOf`)."""
-    keywords = list(keywords)
-    keywords.sort(key=len, reverse=True)  # sort by descending length
-    keywords = (_pp.Keyword(key) for key in keywords)
+    """Create a pyparsing grammar that matches keywords, ignoring the remainder of the text.."""
+    keywords = _pp.oneOf(keywords, caseless=True)  # matches longest string first if substrings exist
     keywords = _pp.MatchFirst(keywords)
     other_text = _pp.Suppress(_pp.SkipTo(keywords))
     line_end = _pp.Suppress(_pp.SkipTo(_pp.StringEnd()))
