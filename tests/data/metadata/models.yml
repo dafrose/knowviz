@@ -1,7 +1,5 @@
-%YAML 1.2
----
 m1:
-  checksum: '33901744b995d0c0bb6a85495ebda1a0'
+  checksum: 33901744b995d0c0bb6a85495ebda1a0
   keywords:
-    - q1
-    - q2
+  - q1
+  - q2

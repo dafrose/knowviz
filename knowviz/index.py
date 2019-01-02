@@ -1,12 +1,20 @@
 """Creating and updating database indices."""
-import os
+import os as _os
 import typing as _t
 from hashlib import md5 as _md5
 import pyparsing as _pp
 
 
+class ParserError(Exception):
+    pass
+
+
 def create_grammar(keywords: _t.Sequence) -> _pp.ParserElement:
-    """Create a pyparsing grammar that matches keywords, ignoring the remainder of the text."""
+    """Create a pyparsing grammar that matches keywords, ignoring the remainder of the text. Using `pyparsing.Keyword`
+    and MatchFirst will match the first in the list of keywords as isolated words. The list of `keywords` will be sorted
+    internally, such that longer strings are matched first (mimicking the behaviour of `pyparsing.oneOf`)."""
+    keywords = list(keywords)
+    keywords.sort(key=len, reverse=True)  # sort by descending length
     keywords = (_pp.Keyword(key) for key in keywords)
     keywords = _pp.MatchFirst(keywords)
     other_text = _pp.Suppress(_pp.SkipTo(keywords))
@@ -35,8 +43,12 @@ def parse_tex_file(fname: str, grammar: _pp.ParserElement, parse_all=True) -> li
 
     if not fname.endswith(".tex"):
         fname = fname + ".tex"
-
-    results = grammar.parseFile(fname, parseAll=parse_all)
+    try:
+        results = grammar.parseFile(fname, parseAll=parse_all)
+    except _pp.ParseException as e:
+        raise ParserError(f"Could not find any known keyword in file {fname}.\n"
+                          "You can resolve this error by either adding an alias for a keyword in the index or by "
+                          "reviewing the file and properly referencing known keywords.")
 
     return results
 
@@ -44,25 +56,28 @@ def parse_tex_file(fname: str, grammar: _pp.ParserElement, parse_all=True) -> li
 def load_yaml_file(fname: str) -> dict:
     """Load index of quantities and pseudonyms from a YAML file."""
 
+    fname = _os.path.normpath(fname)
     from ruamel.yaml import YAML
     yaml = YAML()
-
-    with open(fname, "r") as file:
-        quantities = dict(yaml.load(file))
+    try:
+        with open(fname, "r") as file:
+            quantities = dict(yaml.load(file))
+    except FileNotFoundError:
+        quantities = dict()
 
     return quantities
 
 
 def write_yaml_file(fname: str, content: _t.Iterable):
     """Write content to a yaml file"""
-
+    fname = _os.path.normpath(fname)
     if not (fname.endswith(".yml") or fname.endswith(".yaml")):
-        fname = os.path.join(fname, ".yml")
+        fname = _os.path.join(fname, ".yml")
 
     from ruamel.yaml import YAML
     yaml = YAML()
 
-    with open(fname, "w") as file:
+    with open(fname, "w+") as file:
         yaml.dump(content, file)
 
 
@@ -87,33 +102,33 @@ def md5_checksum(fname: str):
 
 def scan_directory(dirname, extension="") -> _t.Iterator[str]:
     """Recursively scan directory and subdirectories for files with given file extension (default: '') """
-    for file_or_dir in os.listdir(dirname):
-        path = os.path.join(dirname, file_or_dir)
-        if os.path.isdir(path):
-            for file in scan_directory(path):
+    for file_or_dir in _os.listdir(dirname):
+        file_or_dir = _os.path.normpath(_os.path.join(dirname, file_or_dir))
+        if _os.path.isdir(file_or_dir):
+            for file in scan_directory(file_or_dir, extension):
                 yield file
-        elif os.path.isfile(path) and file_or_dir.endswith(extension):
-            yield path
+        elif _os.path.isfile(file_or_dir) and file_or_dir.endswith(extension):
+            yield file_or_dir
         else:
             continue
 
 
 def update_model_index(dirname: str):
     # load quantities index
-    fname = os.path.join(dirname, "metadata/", "quantities.yml")
+    fname = _os.path.join(dirname, "metadata/", "quantities.yml")
     quantities = load_yaml_file(fname)
     keywords = list(quantities.keys())
 
     # load models index
-    fname = os.path.join(dirname, "metadata/", "models.yml")
+    fname = _os.path.join(dirname, "metadata/", "models.yml")
     models = load_yaml_file(fname)
 
     # load all models in model directory
-    model_dir = os.path.join(dirname, "models/")
+    model_dir = _os.path.join(dirname, "models/")
     changed = False
     for fname in scan_directory(model_dir, extension=".tex"):
         checksum = md5_checksum(fname)
-        model = fname.split("/")[-1].split(".")[0]
+        model, _ = _os.path.splitext(_os.path.split(fname)[-1])
         try:
             # see if model is already known and if checksum has been changed
             assert models[model]["checksum"] == checksum
@@ -131,23 +146,23 @@ def update_model_index(dirname: str):
 
     # write changed index to file
     if changed:
-        fname = os.path.join(dirname, "metadata/", "models.yml")
+        fname = _os.path.join(dirname, "metadata/", "models.yml")
         write_yaml_file(fname, models)
 
     return changed
 
 
-def update_keyword_index(dirname: str, index_name: str = "quantities") -> bool:
+def update_keyword_index(dirname: str, index_name: str) -> bool:
 
     # load quantities index
-    index_fname = os.path.join(dirname, "metadata/", f"{index_name}.yml")
+    index_fname = _os.path.join(dirname, "metadata/", f"{index_name}.yml")
     keywords = load_yaml_file(index_fname)
 
     changed = False
     # get list of filenames
-    data_dir = os.path.join(dirname, f"{index_name}/")
+    data_dir = _os.path.join(dirname, f"{index_name}/")
     for fname in scan_directory(data_dir, extension=".tex"):
-        key = fname.split("/")[-1].split(".")[0]
+        key, _ = _os.path.splitext(_os.path.split(fname)[-1])
 
         if key not in keywords:
             keywords[key] = key
@@ -160,7 +175,12 @@ def update_keyword_index(dirname: str, index_name: str = "quantities") -> bool:
     return changed
 
 
-def add_alternative_keyword(fname, keywords: dict, target: str, alternative: str):
+def update_quantity_index(dirname: str) -> bool:
+
+    return update_keyword_index(dirname, "quantities")
+
+
+def add_keyword_synonym(fname, keywords: dict, target: str, alternative: str):
     """Add a pseudonym to a keyword in the keywords index"""
 
     keywords[alternative] = target

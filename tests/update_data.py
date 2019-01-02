@@ -7,3 +7,9 @@ if __name__ == "__main__":
         print("Models index has been updated.")
     else:
         print("Nothing has changed.")
+
+    changed = index.update_quantity_index("data/")
+    if changed:
+        print("Quantities index has been updated.")
+    else:
+        print("Nothing has changed.")

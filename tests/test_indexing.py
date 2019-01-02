@@ -39,7 +39,7 @@ def test_load_quantities_index():
     path = "data/metadata/quantities.yml"
     quantities = load_yaml_file(path)
 
-    expected = dict(q1="q1", q2="q2", q_1="q1", q_2="q2")
+    expected = dict(q1="q1", q2="q2", q_1="q1", q_2="q2", q3="q3")
 
     assert quantities == expected
 
@@ -57,13 +57,15 @@ def test_parse_keyword_reference():
         assert keyword in results
 
 
-def test_scan_directory():
+@pytest.mark.parametrize("dirname", ("models", "quantities"))
+def test_scan_directory(dirname):
 
     from knowviz.index import scan_directory
 
-    files = scan_directory("data/models/", extension=".tex")
+    files = scan_directory(f"data/{dirname}/", extension=".tex")
 
-    assert next(files).endswith(".tex")
+    for file in files:
+        assert file.endswith(".tex")
 
 
 def test_md5_checksum():
