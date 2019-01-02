@@ -1,184 +1,159 @@
 """Creating and updating database indices."""
 import os as _os
 import typing as _t
-from hashlib import md5 as _md5
 import pyparsing as _pp
 
-
-class ParserError(Exception):
-    pass
+from knowviz.io import parse_document, read_yaml_file, write_yaml_file, md5_checksum, scan_directory
 
 
-def create_grammar(keywords: _t.Sequence) -> _pp.ParserElement:
-    """Create a pyparsing grammar that matches keywords, ignoring the remainder of the text.."""
-    keywords = _pp.oneOf(keywords, caseless=False)  # matches longest string first if substrings exist
-    keywords = _pp.MatchFirst(keywords)
-    other_text = _pp.Suppress(_pp.SkipTo(keywords))
-    line_end = _pp.Suppress(_pp.SkipTo(_pp.StringEnd()))
-    grammar = _pp.OneOrMore(other_text + keywords) + line_end
-    return grammar
+class Index(dict):
 
+    def __init__(self, filename: str = "", datadir: str = "", data_file_ext: str = "", **kwargs):
 
-def parse_tex_file(fname: str, grammar: _pp.ParserElement, parse_all=True) -> list:
-    """Open a tex file and parse its content.
-
-    Parameters:
-    -----------
-    path
-        path/to/file
-    grammar
-        a pyparsing grammar to parse the file
-    parse_all
-        toggle whether the entire file should be parsed up to the end of file or not. Default: True
-
-    Returns:
-    --------
-    results
-        list of results
-        """
-
-    if not fname.endswith(".tex"):
-        fname = fname + ".tex"
-    try:
-        results = grammar.parseFile(fname, parseAll=parse_all)
-    except _pp.ParseException as e:
-        raise ParserError(f"Could not find any known keyword in file {fname}.\n"
-                          "You can resolve this error by either adding an alias for a keyword in the index or by "
-                          "reviewing the file and properly referencing known keywords.")
-
-    return results
-
-
-def load_yaml_file(fname: str) -> dict:
-    """Load index of quantities and pseudonyms from a YAML file."""
-
-    fname = _os.path.normpath(fname)
-    from ruamel.yaml import YAML
-    yaml = YAML()
-    try:
-        with open(fname, "r") as file:
-            quantities = dict(yaml.load(file))
-    except FileNotFoundError:
-        quantities = dict()
-
-    return quantities
-
-
-def write_yaml_file(fname: str, content: _t.Iterable):
-    """Write content to a yaml file"""
-    fname = _os.path.normpath(fname)
-    if not (fname.endswith(".yml") or fname.endswith(".yaml")):
-        fname = _os.path.join(fname, ".yml")
-
-    from ruamel.yaml import YAML
-    yaml = YAML()
-
-    with open(fname, "w+") as file:
-        yaml.dump(content, file)
-
-
-def find_keyword_references(fname, keywords: _t.Iterable):
-    """Load a file (e.g. model) and find references to a given set of keywords."""
-
-    keywords = list(keywords)
-    grammar = create_grammar(keywords)
-    results = list(parse_tex_file(fname, grammar))
-
-    return results
-
-
-def md5_checksum(fname: str):
-    """Compute md5 checksum of a file."""
-    hasher = _md5()
-    with open(fname, "rb") as f:
-        for chunk in iter(lambda: f.read(4096), b""):
-            hasher.update(chunk)
-    return hasher.hexdigest()
-
-
-def scan_directory(dirname, extension="") -> _t.Iterator[str]:
-    """Recursively scan directory and subdirectories for files with given file extension (default: '') """
-    for file_or_dir in _os.listdir(dirname):
-        file_or_dir = _os.path.normpath(_os.path.join(dirname, file_or_dir))
-        if _os.path.isdir(file_or_dir):
-            for file in scan_directory(file_or_dir, extension):
-                yield file
-        elif _os.path.isfile(file_or_dir) and file_or_dir.endswith(extension):
-            yield file_or_dir
+        if filename is not "":
+            super().__init__(read_yaml_file(filename), **kwargs)
         else:
-            continue
+            super().__init__(**kwargs)
 
+        self.filename = filename
+        self.datadir = datadir
+        self.data_file_ext = data_file_ext
 
-def update_model_index(dirname: str):
-    # load quantities index
-    fname = _os.path.join(dirname, "metadata/", "quantities.yml")
-    quantities = load_yaml_file(fname)
-    keywords = list(quantities.keys())
+    @property
+    def name(self):
+        """Name of the index. Defined by filename."""
+        name, _ = _os.path.splitext(_os.path.split(self.filename)[1])
+        return name
 
-    # load models index
-    fname = _os.path.join(dirname, "metadata/", "models.yml")
-    models = load_yaml_file(fname)
+    @property
+    def indexdir(self):
+        """Path to parent directory of this index (which is the assumed location of other indices)."""
+        indexdir, _ = _os.path.split(self.filename)
+        return indexdir
 
-    # load all models in model directory
-    model_dir = _os.path.join(dirname, "models/")
-    changed = False
-    for fname in scan_directory(model_dir, extension=".tex"):
-        checksum = md5_checksum(fname)
-        model, _ = _os.path.splitext(_os.path.split(fname)[-1])
-        try:
-            # see if model is already known and if checksum has been changed
-            assert models[model]["checksum"] == checksum
-        except (KeyError, AssertionError):
-            # update/create model entry
-            refs = find_keyword_references(fname, keywords)
-            refs = tuple({quantities[ref] for ref in refs})
-            models[model] = dict(checksum=checksum,
-                                 keywords=refs)
-            # note that model index has changed
-            changed = True
+    @property
+    def basedir(self):
+        """Name of the index. Defined by filename."""
+        basedir, _ = _os.path.split(self.indexdir)
+        return basedir
+
+    def save_to_file(self, filename: str = ""):
+        """Save index to a yaml file. If no filename is given, will try to use already defined filename."""
+
+        if filename is not "":
+            self.filename = filename
+        elif self.filename is "":
+            raise ValueError("No filename defined. Please define a filename.")
+        write_yaml_file(self.filename, self)
+
+    def update(self, *args, **kwargs):
+
+        if args or kwargs:
+            super().update(*args, **kwargs)
         else:
-            # model is known and checksum is identical
-            continue
+            raise NotImplementedError
 
-    # write changed index to file
-    if changed:
-        fname = _os.path.join(dirname, "metadata/", "models.yml")
-        write_yaml_file(fname, models)
+    def __repr__(self):
 
-    return changed
+        cls = self.__class__
+        return f"<{cls}> {self.name}"
 
 
-def update_keyword_index(dirname: str, index_name: str) -> bool:
+class KeywordIndex(Index):
 
-    # load quantities index
-    index_fname = _os.path.join(dirname, "metadata/", f"{index_name}.yml")
-    keywords = load_yaml_file(index_fname)
+    @property
+    def unique_keys(self) -> _t.Iterator:
+        """Iterator of unique keys in the keyword index, i.e. keys that refer to themselves rather than others."""
+        return (key for key, value in self.items() if key == value)
 
-    changed = False
-    # get list of filenames
-    data_dir = _os.path.join(dirname, f"{index_name}/")
-    for fname in scan_directory(data_dir, extension=".tex"):
-        key, _ = _os.path.splitext(_os.path.split(fname)[-1])
+    def update(self, *args, **kwargs):
+        """If any argument is given, it is passed to `dict.update`. Otherwise the index is update from files in the
+        database."""
 
-        if key not in keywords:
-            keywords[key] = key
-            changed = True
+        if args or kwargs:
+            super().update(*args, **kwargs)
+        else:  # update from file
+            changed = False
+            # get list of filenames
+            if self.datadir is "":
+                # default to data directory based on index name
+                self.datadir = _os.path.join(self.basedir, self.name)
+            for fname in scan_directory(self.datadir, extension=self.data_file_ext):
+                key, _ = _os.path.splitext(_os.path.split(fname)[-1])
 
-    if changed:
-        # overwrite yaml file
-        write_yaml_file(index_fname, keywords)
+                if key not in self:
+                    self[key] = key
+                    changed = True
 
-    return changed
-
-
-def update_quantity_index(dirname: str) -> bool:
-
-    return update_keyword_index(dirname, "quantities")
+            if changed:
+                print(f"Updated {self.name} index.")
+            else:
+                print(f"No changes detected.")
 
 
-def add_keyword_synonym(fname, keywords: dict, target: str, alternative: str):
-    """Add a pseudonym to a keyword in the keywords index"""
+class RelationIndex(Index):
 
-    keywords[alternative] = target
+    def __init__(self, keyword_index: KeywordIndex, filename: str = "",
+                 datadir: str = "", data_file_ext: str = "",
+                 **kwargs):
 
-    write_yaml_file(fname, keywords)
+        super().__init__(filename, datadir, data_file_ext, **kwargs)
+
+        self.keywords = keyword_index
+
+    def update(self, *args, **kwargs):
+        """If any argument is given, it is passed to `dict.update`. Otherwise the index is update from files in the
+        database."""
+
+        if args or kwargs:
+            super().update(*args, **kwargs)
+        else:
+            self.keywords.update()
+
+            # load all models in model directory
+            if self.datadir is "":
+                # default to data directory based on index name
+                self.datadir = _os.path.join(self.basedir, self.name)
+
+            changed = False
+            for fname in scan_directory(self.datadir, extension=self.data_file_ext):
+                checksum = md5_checksum(fname)
+                model, _ = _os.path.splitext(_os.path.split(fname)[-1])
+                try:
+                    # see if model is already known and if checksum has been changed
+                    assert self[model]["checksum"] == checksum
+                except (KeyError, AssertionError):
+                    # update/create model entry
+                    refs = self.find_keyword_references(fname)
+                    refs = tuple({self.keywords[ref] for ref in refs})
+                    self[model] = dict(checksum=checksum,
+                                       keywords=refs)
+                    # note that model index has changed
+                    changed = True
+                else:
+                    # model is known and checksum is identical
+                    continue
+
+            if changed:
+                print(f"Updated {self.name} index.")
+            else:
+                print(f"No changes detected.")
+
+    @staticmethod
+    def create_grammar(keywords: _t.Iterable[str]) -> _pp.ParserElement:
+        """Create a pyparsing grammar that matches keywords, ignoring the remainder of the text.."""
+        keywords = _pp.oneOf(keywords, caseless=False)  # matches longest string first if substrings exist
+        keywords = _pp.MatchFirst(keywords)
+        other_text = _pp.Suppress(_pp.SkipTo(keywords))
+        line_end = _pp.Suppress(_pp.SkipTo(_pp.StringEnd()))
+        grammar = _pp.OneOrMore(other_text + keywords) + line_end
+        return grammar
+
+    def find_keyword_references(self, fname):
+        """Load a file (e.g. model) and find references to a given set of keywords."""
+
+        keywords = self.keywords.keys()
+        grammar = self.create_grammar(keywords)
+        results = list(parse_document(fname, grammar))
+
+        return results
