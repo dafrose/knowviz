@@ -11,7 +11,7 @@ class ParserError(Exception):
 
 def create_grammar(keywords: _t.Sequence) -> _pp.ParserElement:
     """Create a pyparsing grammar that matches keywords, ignoring the remainder of the text.."""
-    keywords = _pp.oneOf(keywords, caseless=True)  # matches longest string first if substrings exist
+    keywords = _pp.oneOf(keywords, caseless=False)  # matches longest string first if substrings exist
     keywords = _pp.MatchFirst(keywords)
     other_text = _pp.Suppress(_pp.SkipTo(keywords))
     line_end = _pp.Suppress(_pp.SkipTo(_pp.StringEnd()))
