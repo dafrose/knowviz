@@ -18,7 +18,6 @@ def test_create_grammar(text, keywords, expected):
                          (("data/models/m1", ("q2", "q1"), ["q1", "q2"]),
                           ))
 def test_parse_tex_file(path, keywords, expected):
-
     from knowviz.index import RelationIndex
     from knowviz.io import parse_document
 
@@ -31,7 +30,6 @@ def test_parse_tex_file(path, keywords, expected):
 
 
 def test_load_quantities_index():
-
     from knowviz.io import read_yaml_file
 
     path = "data/metadata/quantities.yml"
@@ -42,8 +40,25 @@ def test_load_quantities_index():
     assert quantities == expected
 
 
-def test_parse_keyword_reference():
+def test_get_unique_keys():
+    """Test the unique_keys method of KeywordIndex"""
 
+    from knowviz.index import KeywordIndex
+    quantities = KeywordIndex("data/metadata/quantities.yml")
+    expected = ("q1", "q2", "q3")
+
+    count = 0
+    for key in quantities.unique_keys():
+        assert key in expected
+        count += 1
+
+    assert count == len(expected)
+
+    uniques = tuple(quantities.unique_keys())
+    assert uniques == expected
+
+
+def test_parse_keyword_reference():
     from knowviz.index import RelationIndex, KeywordIndex
 
     quantities = KeywordIndex("data/metadata/quantities.yml")
@@ -58,7 +73,6 @@ def test_parse_keyword_reference():
 
 @pytest.mark.parametrize("dirname", ("models", "quantities"))
 def test_scan_directory(dirname):
-
     from knowviz.io import scan_directory
 
     files = scan_directory(f"data/{dirname}/", extension=".tex")

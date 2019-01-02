@@ -53,15 +53,9 @@ class Index(dict):
         else:
             raise NotImplementedError
 
-    def __repr__(self):
-
-        cls = self.__class__
-        return f"<{cls}> {self.name}"
-
 
 class KeywordIndex(Index):
 
-    @property
     def unique_keys(self) -> _t.Iterator:
         """Iterator of unique keys in the keyword index, i.e. keys that refer to themselves rather than others."""
         return (key for key, value in self.items() if key == value)
