@@ -60,6 +60,20 @@ class KeywordIndex(Index):
         """Iterator of unique keys in the keyword index, i.e. keys that refer to themselves rather than others."""
         return (key for key, value in self.items() if key == value)
 
+    def synonyms(self) -> dict:
+        """Dictionary with unique keys as key and a list of synonyms as values."""
+
+        synonyms = dict()
+        for key in self.unique_keys():
+            synonyms[key] = []
+
+        for key, value in self.items():
+            if value in synonyms:
+                if key != value:
+                    synonyms[value].append(key)
+
+        return synonyms
+
     def update(self, *args, **kwargs):
         """If any argument is given, it is passed to `dict.update`. Otherwise the index is update from files in the
         database."""
