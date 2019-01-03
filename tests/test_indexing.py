@@ -37,8 +37,10 @@ def test_load_quantities_index():
 
     expected = dict(q1="q1", q2="q2", q_1="q1", q_2="q2", q3="q3")
 
-    assert quantities == expected
+    for key in expected:
+        assert key in quantities
 
+    assert len(quantities) == len(expected)
 
 def test_get_unique_keys():
     """Test the unique_keys method of KeywordIndex"""

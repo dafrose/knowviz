@@ -15,8 +15,8 @@ class Index(dict):
         else:
             super().__init__(**kwargs)
 
-        self.filename = filename
-        self.datadir = datadir
+        self.filename = _os.path.normpath(filename)
+        self._datadir = datadir
 
     @property
     def name(self):
@@ -36,6 +36,16 @@ class Index(dict):
         basedir, _ = _os.path.split(self.indexdir)
         return basedir
 
+    @property
+    def datadir(self):
+        """Directory of documents related to this index."""
+
+        if self._datadir is "":
+            # default to data directory based on index name
+            self._datadir = _os.path.join(self.basedir, self.name)
+
+        return self._datadir
+
     def save_to_file(self, filename: str = ""):
         """Save index to a yaml file. If no filename is given, will try to use already defined filename."""
 
@@ -47,6 +57,18 @@ class Index(dict):
 
     def rescan_documents(self):
         raise NotImplementedError
+
+    def report_update(self, changed: bool, overwrite_file: bool) -> bool:
+
+        if changed:
+            if overwrite_file:
+                self.save_to_file()
+                print(f"Updated '{self.name}' index and saved to file '{self.filename}'.")
+            else:
+                print(f"Updated '{self.name}' index, not saved to file.")
+        else:
+            print(f"No changes detected.")
+        return changed
 
 
 class KeywordIndex(Index):
@@ -63,19 +85,15 @@ class KeywordIndex(Index):
             synonyms[key] = []
 
         for key, value in self.items():
-            if value in synonyms:
-                if key != value:
-                    synonyms[value].append(key)
+            if type(value) is str:
+                synonyms[value].append(key)
 
         return synonyms
 
-    def rescan_documents(self) -> bool:
+    def rescan_documents(self, overwrite_file=False) -> bool:
         """Scan through documents given in `datadir` (and below)."""
         changed = False
         # get list of filenames
-        if self.datadir is "":
-            # default to data directory based on index name
-            self.datadir = _os.path.join(self.basedir, self.name)
         for fname in scan_directory(self.datadir, extension=".yml"):
             checksum = md5_checksum(fname)
             keyword, _ = _os.path.splitext(_os.path.split(fname)[-1])
@@ -97,11 +115,7 @@ class KeywordIndex(Index):
                 self[keyword] = dict(checksum=checksum,
                                      file=relpath)
 
-        if changed:
-            print(f"Updated '{self.name}' index.")
-        else:
-            print(f"No changes detected.")
-        return changed
+        return self.report_update(changed, overwrite_file)
 
 
 class RelationIndex(Index):
@@ -134,15 +148,10 @@ class RelationIndex(Index):
         self.keywords = keyword_index
         self.data_file_ext = data_file_ext
 
-    def rescan_documents(self) -> bool:
+    def rescan_documents(self, overwrite_file=False) -> bool:
         """Update index from files in the database."""
 
         self.keywords.rescan_documents()
-
-        if self.datadir is "":
-            # default to data directory based on index name
-            self.datadir = _os.path.join(self.basedir, self.name)
-            # if no filename was specified, document will be scanned based on the current working directory
 
         # load all models in model directory / relations in relation directory
         changed = False
@@ -164,12 +173,7 @@ class RelationIndex(Index):
                 # model is known and checksum is identical
                 continue
 
-        if changed:
-            print(f"Updated {self.name} index.")
-        else:
-            print(f"No changes detected.")
-
-        return changed
+        return self.report_update(changed, overwrite_file)
 
     @staticmethod
     def create_grammar(keywords: _t.Iterable[str]) -> _pp.ParserElement:
