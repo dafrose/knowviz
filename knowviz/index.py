@@ -117,6 +117,10 @@ class KeywordIndex(Index):
 
         return self.report_update(changed, overwrite_file)
 
+    def keyword_info(self, key: str):
+        filename = _os.path.join(self.datadir, self[key]["file"])
+        return read_yaml_file(filename)
+
 
 class RelationIndex(Index):
 

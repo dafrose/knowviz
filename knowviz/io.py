@@ -87,3 +87,19 @@ def scan_directory(dirname, extension="") -> _t.Iterator[str]:
             yield file_or_dir
         else:
             continue
+
+
+def startfile(filename: str, folder: str = ""):
+    """Start a given file in default application from python."""
+    import sys
+    import os
+    import subprocess
+
+    filepath = os.path.abspath(folder + filename)
+
+    if sys.platform.startswith('darwin'):
+        subprocess.call(('open', filepath))
+    elif os.name == 'nt':
+        os.startfile(filepath)
+    elif os.name == 'posix':
+        subprocess.call(('xdg-open', filepath))

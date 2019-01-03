@@ -42,6 +42,7 @@ def test_load_quantities_index():
 
     assert len(quantities) == len(expected)
 
+
 def test_get_unique_keys():
     """Test the unique_keys method of KeywordIndex"""
 
