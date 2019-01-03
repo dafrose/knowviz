@@ -46,8 +46,12 @@ def read_yaml_file(fname: str) -> dict:
     fname = _os.path.normpath(fname)
     from ruamel.yaml import YAML
     yaml = YAML()
-    with open(fname, "r") as file:
-        return dict(yaml.load(file))
+    try:
+        with open(fname, "r") as file:
+            return dict(yaml.load(file))
+    except TypeError as e:
+        if "NoneType" in str(e):
+            return dict()
 
 
 def write_yaml_file(fname: str, content: _t.Iterable):

@@ -8,7 +8,7 @@ from knowviz.io import parse_document, read_yaml_file, write_yaml_file, md5_chec
 
 class Index(dict):
 
-    def __init__(self, filename: str = "", datadir: str = "", data_file_ext: str = "", **kwargs):
+    def __init__(self, filename: str = "", datadir: str = "", **kwargs):
 
         if filename is not "":
             super().__init__(read_yaml_file(filename), **kwargs)
@@ -17,7 +17,6 @@ class Index(dict):
 
         self.filename = filename
         self.datadir = datadir
-        self.data_file_ext = data_file_ext
 
     @property
     def name(self):
@@ -44,21 +43,17 @@ class Index(dict):
             self.filename = filename
         elif self.filename is "":
             raise ValueError("No filename defined. Please define a filename.")
-        write_yaml_file(self.filename, self)
+        write_yaml_file(self.filename, dict(self))
 
-    def update(self, *args, **kwargs):
-
-        if args or kwargs:
-            super().update(*args, **kwargs)
-        else:
-            raise NotImplementedError
+    def rescan_documents(self):
+        raise NotImplementedError
 
 
 class KeywordIndex(Index):
 
     def unique_keys(self) -> _t.Iterator:
         """Iterator of unique keys in the keyword index, i.e. keys that refer to themselves rather than others."""
-        return (key for key, value in self.items() if key == value)
+        return (key for key, value in self.items() if isinstance(value, dict))
 
     def synonyms(self) -> dict:
         """Dictionary with unique keys as key and a list of synonyms as values."""
@@ -74,29 +69,39 @@ class KeywordIndex(Index):
 
         return synonyms
 
-    def update(self, *args, **kwargs):
-        """If any argument is given, it is passed to `dict.update`. Otherwise the index is update from files in the
-        database."""
+    def rescan_documents(self) -> bool:
+        """Scan through documents given in `datadir` (and below)."""
+        changed = False
+        # get list of filenames
+        if self.datadir is "":
+            # default to data directory based on index name
+            self.datadir = _os.path.join(self.basedir, self.name)
+        for fname in scan_directory(self.datadir, extension=".yml"):
+            checksum = md5_checksum(fname)
+            keyword, _ = _os.path.splitext(_os.path.split(fname)[-1])
 
-        if args or kwargs:
-            super().update(*args, **kwargs)
-        else:  # update from file
-            changed = False
-            # get list of filenames
-            if self.datadir is "":
-                # default to data directory based on index name
-                self.datadir = _os.path.join(self.basedir, self.name)
-            for fname in scan_directory(self.datadir, extension=self.data_file_ext):
-                key, _ = _os.path.splitext(_os.path.split(fname)[-1])
+            try:
+                # see if key is already known and if checksum has been changed
+                assert self[keyword]["checksum"] == checksum
+            except (KeyError, AssertionError, TypeError):
+                # index will be changed
+                changed = True
+                # load keyword data into index
+                keyword_info = read_yaml_file(fname)
+                for synonym in keyword_info["synonyms"]:
+                    self[synonym] = keyword
 
-                if key not in self:
-                    self[key] = key
-                    changed = True
+                # save new checksum and relative path of file
+                relpath = _os.path.relpath(fname, self.datadir)
+                relpath.replace("\\", "/")
+                self[keyword] = dict(checksum=checksum,
+                                     file=relpath)
 
-            if changed:
-                print(f"Updated {self.name} index.")
-            else:
-                print(f"No changes detected.")
+        if changed:
+            print(f"Updated '{self.name}' index.")
+        else:
+            print(f"No changes detected.")
+        return changed
 
 
 class RelationIndex(Index):
@@ -104,48 +109,67 @@ class RelationIndex(Index):
     def __init__(self, keyword_index: KeywordIndex, filename: str = "",
                  datadir: str = "", data_file_ext: str = "",
                  **kwargs):
+        """
+        Index type for relations between keywords. Parses document files to collect keyword mentions. One document
+        corresponds to one relation.
 
-        super().__init__(filename, datadir, data_file_ext, **kwargs)
+        Parameters
+        ----------
+        keyword_index
+            Reference to an instance of KeywordIndex. Relations will be established between keys defined in this index.
+        filename
+            (Optional) path/to/file to load previous index data from.
+        datadir
+            (Optional) relative or absolute path to directory that contains the documents that this index relates to.
+            Default directory is defined by the index filename as given in `filename`
+        data_file_ext
+            (Optional) file extension of documents related to this index. If none is given, the index will search
+            through all files in `datadir` (and below).
+        kwargs
+            (Optional) keyword arguments that are passed on to the `dict` constructor (will become dictionary entries).
+        """
+
+        super().__init__(filename, datadir, **kwargs)
 
         self.keywords = keyword_index
+        self.data_file_ext = data_file_ext
 
-    def update(self, *args, **kwargs):
-        """If any argument is given, it is passed to `dict.update`. Otherwise the index is update from files in the
-        database."""
+    def rescan_documents(self) -> bool:
+        """Update index from files in the database."""
 
-        if args or kwargs:
-            super().update(*args, **kwargs)
-        else:
-            self.keywords.update()
+        self.keywords.rescan_documents()
 
-            # load all models in model directory
-            if self.datadir is "":
-                # default to data directory based on index name
-                self.datadir = _os.path.join(self.basedir, self.name)
+        if self.datadir is "":
+            # default to data directory based on index name
+            self.datadir = _os.path.join(self.basedir, self.name)
+            # if no filename was specified, document will be scanned based on the current working directory
 
-            changed = False
-            for fname in scan_directory(self.datadir, extension=self.data_file_ext):
-                checksum = md5_checksum(fname)
-                model, _ = _os.path.splitext(_os.path.split(fname)[-1])
-                try:
-                    # see if model is already known and if checksum has been changed
-                    assert self[model]["checksum"] == checksum
-                except (KeyError, AssertionError):
-                    # update/create model entry
-                    refs = self.find_keyword_references(fname)
-                    refs = tuple({self.keywords[ref] for ref in refs})
-                    self[model] = dict(checksum=checksum,
-                                       keywords=refs)
-                    # note that model index has changed
-                    changed = True
-                else:
-                    # model is known and checksum is identical
-                    continue
-
-            if changed:
-                print(f"Updated {self.name} index.")
+        # load all models in model directory / relations in relation directory
+        changed = False
+        for fname in scan_directory(self.datadir, extension=self.data_file_ext):
+            checksum = md5_checksum(fname)
+            model, _ = _os.path.splitext(_os.path.split(fname)[-1])
+            try:
+                # see if model is already known and if checksum has been changed
+                assert self[model]["checksum"] == checksum
+            except (KeyError, AssertionError):
+                # update/create model entry
+                refs = self.find_keyword_references(fname)
+                refs = tuple({self.keywords[ref] for ref in refs})
+                self[model] = dict(checksum=checksum,
+                                   keywords=refs)
+                # note that model index has changed
+                changed = True
             else:
-                print(f"No changes detected.")
+                # model is known and checksum is identical
+                continue
+
+        if changed:
+            print(f"Updated {self.name} index.")
+        else:
+            print(f"No changes detected.")
+
+        return changed
 
     @staticmethod
     def create_grammar(keywords: _t.Iterable[str]) -> _pp.ParserElement:
