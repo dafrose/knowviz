@@ -3,7 +3,7 @@ from setuptools import setup, find_packages
 VERSION = "0.1.0"
 
 INSTALL_REQUIREMENTS = ["ruamel.yaml",
-                        "jupyter", 'pyparsing'
+                        "jupyter", 'pyparsing', 'ipywidgets', 'traitlets'
                         ]
 
 CLASSIFIERS = ["Programming Language :: Python :: 3",
