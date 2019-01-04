@@ -1,3 +1,5 @@
+[![](https://img.shields.io/github/license/dafrose/knowviz.svg)](https://github.com/dafrose/knowviz)
+
 __this tool is still in pre-alpha state and not ready for productive use__
 
 # knowviz
