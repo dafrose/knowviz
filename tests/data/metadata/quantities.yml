@@ -1,11 +1,11 @@
 q1:
-  checksum: 0ea8189fb3ed3769817c0884bfadd887
+  checksum: ff2743b39f2778cfcd9a0ce5894b96d9
   file: q1.yml
 q2:
-  checksum: 86f8771630b6b7a71b226a30fbcbdb84
+  checksum: 1766eeabd009becab0d0a8d1154447b7
   file: q2.yml
 q_1: q1
 q_2: q2
 q3:
-  checksum: 7ed085e2014675f3b5c8b8487388217f
-  file: category\q3.yml
+  checksum: 16bcdd2535bb8c530efc018cbc2cdd42
+  file: category/q3.yml
